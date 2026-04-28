@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<meta charset="UTF-8">
+<title>Balloon Game</title>
+
+<style>
+
+body{
+    text-align:center;
+    font-family:Arial;
+}
+
+#balloon{
+    width:80px;
+    height:80px;
+    background:red;
+    border-radius:50%;
+    margin:40px auto;
+    transition:0.2s;
+}
+
+button{
+    font-size:18px;
+    padding:10px 20px;
+    margin:10px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>Balloon Gambling Game</h1>
+
+<div id="balloon"></div>
+
+<button onclick="pump()">Pump</button>
+<button onclick="collect()">Collect $$$</button>
+<button onclick="downloadData()">Download Data</button>
+
+<h3>Temporary Money: $<span id="temp">0</span></h3>
+<h3>Bank: $<span id="bank">0</span></h3>
+
+<p id="message"></p>
+
+<script>
+    function generateID(){
+    return "P" +
+        Date.now() +
+        Math.floor(Math.random()*1000);
+}
+let PRACTICE_BALLOONS = 5;
+let practiceMode = true;
+let MAX_PUMPS = 64;
+let TOTAL_BALLOONS = 30;
+let participantID = "";
+let size = 80;
+let tempMoney = 0;
+let bankMoney = 0;
+let explosionPoint;
+
+let balloonNumber = 0;
+let pumps = 0;
+let experimentData = [];
+let adjustedPumps = [];
+
+
+startExperiment();
+
+function startExperiment(){
+
+    participantID = generateID();
+
+    console.log("Participant ID:", participantID);
+    document.body.innerHTML = `
+        <h2>Balloon Game Instructions</h2>
+
+        <p>You will see balloons.</p>
+
+        <p>
+        Each pump earns money.<br>
+        But balloons can explode at any time.
+        </p>
+
+        <p>
+        Press <b>Collect</b> before explosion
+        to save your earnings.
+        </p>
+
+        <p>
+        First you will complete PRACTICE balloons.
+        </p>
+
+        <button onclick="startPractice()">Start Practice</button>
+    `;
+}
+function loadGameScreen(){
+
+    document.body.innerHTML = `
+        <h1>Balloon Gambling Game</h1>
+
+        <div id="balloon"></div>
+
+        <button onclick="pump()">Pump</button>
+        <button onclick="collect()">Collect $$$</button>
+
+        <h3>Temporary Money: $<span id="temp">0</span></h3>
+        <h3>Bank: $<span id="bank">0</span></h3>
+
+        <p id="message"></p>
+    `;
+}
+
+function startPractice(){
+
+    practiceMode = true;
+    balloonNumber = 0;
+
+    loadGameScreen();
+    newBalloon();
+}
+function startRealExperiment(){
+
+    practiceMode = false;
+    balloonNumber = 0;
+
+    // RESET EVERYTHING
+    bankMoney = 0;
+    tempMoney = 0;
+    adjustedPumps = [];
+    alert("Practice finished. Real experiment begins.");
+
+    loadGameScreen();
+    newBalloon();
+}
+
+function newBalloon(){
+
+    if(practiceMode && balloonNumber >= PRACTICE_BALLOONS){
+        startRealExperiment();
+        return;
+    }
+
+    if(!practiceMode && balloonNumber >= TOTAL_BALLOONS){
+        endExperiment();
+        return;
+    }
+
+    balloonNumber++;
+    pumps = 0;
+
+    explosionPoint = Math.floor(Math.random()*MAX_PUMPS) + 1;
+
+    size = 80;
+    tempMoney = 0;
+
+    document.getElementById("balloon").style.background="red";
+
+    update();
+
+    document.getElementById("balloon").style.width=size+"px";
+    document.getElementById("balloon").style.height=size+"px";
+
+    document.getElementById("message").innerText="New balloon!";
+}
+
+function pump(){
+
+    pumps++;
+
+    size += 6;
+    tempMoney += 0.05;
+
+    document.getElementById("balloon").style.width=size+"px";
+    document.getElementById("balloon").style.height=size+"px";
+
+    update();
+
+    // explosion rule
+    if(pumps >= explosionPoint){
+        explode();
+    }
+}
+
+function collect(){
+
+    // add temporary money to bank
+    bankMoney += tempMoney;
+
+    document.getElementById("message").innerText =
+        "You collected $" + tempMoney.toFixed(2);
+
+    // SAVE DATA (only real experiment)
+    if(!practiceMode){
+
+        let data = {
+            participant: participantID,
+            balloon: balloonNumber,
+            pumps: pumps,
+            outcome: "collect",
+            earnings: tempMoney,
+            risk_taken: pumps > 0
+        };
+
+        experimentData.push(data);
+
+        // SEND DATA TO GOOGLE SHEET
+        sendData(data);
+
+        adjustedPumps.push(pumps);
+
+    }
+
+    tempMoney = 0;
+    update();
+
+    newBalloon();
+}
+
+function explode(){
+
+    document.getElementById("balloon").style.background = "black";
+
+    document.getElementById("message").innerText =
+        "💥 Balloon exploded!";
+
+    // SAVE DATA (only real experiment)
+    if(!practiceMode){
+
+        let data = {
+            participant: participantID,
+            balloon: balloonNumber,
+            pumps: pumps,
+            outcome: "explode",
+            earnings: 0,
+            risk_taken: pumps > 0
+        };
+
+        experimentData.push(data);
+
+        // SEND TO GOOGLE SHEET
+        sendData(data);
+    }
+
+    tempMoney = 0;
+    update();
+
+    setTimeout(newBalloon,1200);
+}
+
+function update(){
+
+    document.getElementById("temp").innerText=
+        tempMoney.toFixed(2);
+
+    document.getElementById("bank").innerText=
+        bankMoney.toFixed(2);
+}
+function downloadData(){
+
+    if(experimentData.length === 0){
+        alert("No data recorded.");
+        return;
+    }
+
+    let headers = Object.keys(experimentData[0]).join(",");
+
+    let rows = experimentData.map(obj =>
+        Object.values(obj).join(",")
+    );
+
+    let csv = headers + "\n" + rows.join("\n");
+
+    let blob = new Blob([csv], {type:"text/csv"});
+
+    let link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "BART_data.csv";
+    link.click();
+}
+function endExperiment(){
+
+    // prevent repeat participation
+    localStorage.setItem("BART_completed", true);
+
+    let meanAdjusted = 0;
+
+    if(adjustedPumps.length > 0){
+        meanAdjusted =
+            adjustedPumps.reduce((a,b)=>a+b,0) /
+            adjustedPumps.length;
+    }
+
+    document.body.innerHTML = `
+        <h2>Experiment Complete</h2>
+
+        <p>Total Bank: $${bankMoney.toFixed(2)}</p>
+
+        <p><b>Adjusted Pumps Score:</b>
+        ${meanAdjusted.toFixed(2)}</p>
+
+        <button onclick="downloadData()">Download Data</button>
+    `;
+}
+
+function sendData(row){
+
+    fetch("https://script.google.com/macros/s/AKfycbz3Y2jAQXaJkK10SkimnFjJxKURWpMRM9KQ6KkSCuqkJqPmFvKtrwqVXeKbgJ7TbAZC/exec", {
+        method: "POST",
+        headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify(row)
+    })
+    .then(res => console.log("Data sent"))
+    .catch(err => console.log("Send error:", err));
+
+}
+
+</script>
+
+</body>
+</html>
